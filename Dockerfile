@@ -1,5 +1,5 @@
-# Use an official Node runtime as a parent image
-FROM node:14
+# Use the specified Node.js version as a parent image
+FROM node:20.12.2
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
