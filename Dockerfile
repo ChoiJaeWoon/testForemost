@@ -1,13 +1,12 @@
 # Use the specified Node.js version as a parent image
-FROM node:20.12.2
-
-# Install foremost and other dependencies
-RUN apt-get update && apt-get install -y \
-    foremost \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:20
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
+
+# Copy foremost binary to the container
+COPY foremost /app/foremost
+RUN chmod +x /app/foremost
 
 # Copy package.json and package-lock.json
 COPY package*.json ./
