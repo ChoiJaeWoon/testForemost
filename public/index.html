@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>파일 복구 요청</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="logo">Foremost</div>
+      <button id="cautionBtn" class="caution-btn">• 주의사항</button>
+    </header>
+    <div class="container">
+      <section>
+        <h1>Upload a new file</h1>
+        <input
+          type="file"
+          id="fileInput"
+          class="file-input"
+          name="file"
+          required
+        />
+        <button id="uploadBtn" class="recovery-button">Upload</button>
+      </section>
+      <section class="uploaded-files">
+        <h2>Uploaded Files</h2>
+        <div class="file-list hidden" id="uploadedFilesList"></div>
+        <div class="file-buttons hidden" id="fileButtons">
+          <button class="delete-button">Delete</button>
+          <button class="recover-button">Recover</button>
+        </div>
+        <div class="progress-wrapper">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+      </section>
+      <section class="recovered-files">
+        <h2>Recovered Files</h2>
+        <div class="file-list" id="recoveredFilesList"></div>
+        <button class="download-button" style="display: none">Download</button>
+      </section>
+    </div>
+
+    <div id="cautionModal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>주의사항</h2>
+        <ul>
+          <li>파일 이름에 띄어쓰기 또는 한글이 들어갈 시 작동하지 않습니다</li>
+          <li>복구 성공 여부는 파일 손상 정도에 따라 달라집니다</li>
+          <li>
+            대부분의 파일 형식을 지원하나 jsp 등과 같이 지원하지 않는 파일
+            형식이 존재합니다
+          </li>
+          <li>
+            크기가 큰 파일을 복구하는 경우 복구될 때까지 반응이 없을 수 있습니다
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const ws = new WebSocket("ws://localhost:3000");
+        ws.onmessage = function (event) {
+          const progress = JSON.parse(event.data).progress;
+          document.getElementById("progressBar").style.width = progress + "%";
+        };
+
+        const fileInput = document.getElementById("fileInput");
+        const uploadBtn = document.getElementById("uploadBtn");
+        const cautionBtn = document.getElementById("cautionBtn");
+        const cautionModal = document.getElementById("cautionModal");
+        const closeBtn = document.querySelector(".close");
+        const deleteButton = document.querySelector(".delete-button");
+        const recoverButton = document.querySelector(".recover-button");
+        const downloadButton = document.querySelector(".download-button");
+        const uploadedFilesList = document.getElementById("uploadedFilesList");
+        const fileButtons = document.getElementById("fileButtons");
+        const recoveredFilesList =
+          document.getElementById("recoveredFilesList");
+
+        function fetchUploadedFiles() {
+          fetch("/uploaded-files")
+            .then((response) => response.json())
+            .then((data) => {
+              uploadedFilesList.innerHTML = "";
+              if (data.uploadedFiles.length > 0) {
+                data.uploadedFiles.forEach((file) => {
+                  const fileItemTemplate = document.createElement("div");
+                  fileItemTemplate.className = "file-item";
+                  const fileName = document.createElement("span");
+                  fileName.className = "file-name";
+                  fileName.textContent = file;
+                  fileItemTemplate.appendChild(fileName);
+                  uploadedFilesList.appendChild(fileItemTemplate);
+                });
+                uploadedFilesList.classList.remove("hidden");
+                fileButtons.classList.remove("hidden");
+              } else {
+                uploadedFilesList.classList.add("hidden");
+                fileButtons.classList.add("hidden");
+              }
+            })
+            .catch((error) => {
+              console.error("Error fetching uploaded files:", error);
+            });
+        }
+
+        uploadBtn.onclick = async function () {
+          const file = fileInput.files[0];
+          if (!file) {
+            alert("업로드할 파일을 선택해주세요.");
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/upload", true);
+          xhr.upload.onprogress = function (e) {
+            if (e.lengthComputable) {
+              const percentComplete = (e.loaded / e.total) * 100;
+              document.getElementById("progressBar").style.width =
+                percentComplete + "%";
+            }
+          };
+          xhr.onload = function () {
+            if (xhr.status === 200) {
+              fetchUploadedFiles();
+              alert("파일 업로드 성공");
+              uploadedFilesList.classList.remove("hidden"); // 업로드 성공 시 파일 목록 표시
+              fileButtons.classList.remove("hidden"); // 업로드 성공 시 버튼 표시
+            } else {
+              alert("업로드 중 오류가 발생했습니다.");
+            }
+          };
+          xhr.send(formData);
+        };
+
+        deleteButton.onclick = async function () {
+          await fetch("/delete", { method: "POST" });
+          uploadedFilesList.innerHTML = "";
+          document.getElementById("progressBar").style.width = "0%";
+          uploadedFilesList.classList.add("hidden");
+          fileButtons.classList.add("hidden");
+          alert("파일 삭제 완료");
+        };
+
+        recoverButton.onclick = async function () {
+          const response = await fetch("/recover-file", { method: "POST" });
+          const result = await response.json();
+          if (response.ok) {
+            recoveredFilesList.innerHTML = "";
+            const files = result.recoveredFiles;
+            files.forEach((file) => {
+              const fileItemTemplate = document.createElement("div");
+              fileItemTemplate.className = "file-item";
+              const fileName = document.createElement("span");
+              fileName.className = "file-name";
+              fileName.textContent = file;
+              fileItemTemplate.appendChild(fileName);
+              recoveredFilesList.appendChild(fileItemTemplate);
+            });
+            downloadButton.style.display = "block";
+            downloadButton.onclick = async function () {
+              const link = document.createElement("a");
+              link.href = result.downloadLink;
+              link.download = "recovered_files.zip";
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            };
+            alert("파일 복구 완료");
+          } else {
+            alert("복구 요청 중 오류가 발생했습니다.");
+          }
+        };
+
+        cautionBtn.onclick = function () {
+          cautionModal.style.display = "block";
+        };
+
+        closeBtn.onclick = function () {
+          cautionModal.style.display = "none";
+        };
+
+        window.onclick = function (event) {
+          if (event.target == cautionModal) {
+            cautionModal.style.display = "none";
+          }
+        };
+
+        // fetchUploadedFiles() 함수 호출 제거
+      });
+    </script>
+  </body>
+</html>
